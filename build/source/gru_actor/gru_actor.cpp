@@ -33,14 +33,23 @@ behavior GruActor::make_behavior() {
     return {};
   }
 
-  f_setGruTolerances(gru_data_.get(), hru_actor_settings_.rel_tol_,
-      hru_actor_settings_.abs_tol_, hru_actor_settings_.rel_tol_temp_cas_,
-      hru_actor_settings_.rel_tol_temp_veg_, hru_actor_settings_.rel_tol_wat_veg_,
-      hru_actor_settings_.rel_tol_temp_soil_snow_, hru_actor_settings_.rel_tol_wat_snow_,
+  f_setGruTolerances(gru_data_.get(), hru_actor_settings_.be_steps_,
+      // Relative Tolerances
+      hru_actor_settings_.rel_tol_, hru_actor_settings_.rel_tol_temp_cas_,
+      hru_actor_settings_.rel_tol_temp_veg_, 
+      hru_actor_settings_.rel_tol_wat_veg_,
+      hru_actor_settings_.rel_tol_temp_soil_snow_, 
+      hru_actor_settings_.rel_tol_wat_snow_,
       hru_actor_settings_.rel_tol_matric_, hru_actor_settings_.rel_tol_aquifr_,
-      hru_actor_settings_.abs_tol_temp_cas_, hru_actor_settings_.abs_tol_temp_veg_,
-      hru_actor_settings_.abs_tol_wat_veg_, hru_actor_settings_.abs_tol_temp_soil_snow_,
-      hru_actor_settings_.abs_tol_wat_snow_, hru_actor_settings_.abs_tol_matric_,
+      // Absolute Tolerances
+      hru_actor_settings_.abs_tol_,
+      hru_actor_settings_.abs_tolWat_, hru_actor_settings_.abs_tolNrg_,
+      hru_actor_settings_.abs_tol_temp_cas_, 
+      hru_actor_settings_.abs_tol_temp_veg_,
+      hru_actor_settings_.abs_tol_wat_veg_, 
+      hru_actor_settings_.abs_tol_temp_soil_snow_,
+      hru_actor_settings_.abs_tol_wat_snow_, 
+      hru_actor_settings_.abs_tol_matric_,
       hru_actor_settings_.abs_tol_aquifr_);
 
   data_assimilation_mode_ ? self_->become(data_assimilation_mode()) :
@@ -190,6 +199,7 @@ void GruActor::handleErr(int err, std::unique_ptr<char[]>& message) {
   // f_fillOutputWithErrs(job_index_, timestep_, output_step_, gru_data_.get(), 
   //                      local_err, &local_message);
 
+  self_->println("GRU Actor: SUMMA error message -- {}", message.get());
   self_->mail(err_atom_v, job_index_, timestep_, err, message.get())
       .send(parent_);
   self_->quit();
