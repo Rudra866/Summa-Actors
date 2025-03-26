@@ -2,21 +2,22 @@
 
 # If compiling on a Digital Research Alliance of Canada cluster,
 # load the following modules:
-# module load StdEnv/2020
-# module load gcc/9.3.0
+module load StdEnv/2023
+module load gcc/12.3
 # module load openblas/0.3.17
-# module load netcdf-fortran/4.5.2
+module load netcdf-fortran
+module load tbb
 
 # If compiling on Anvil, load the following modules:
 # module load gcc/11.2.0 
 # module load openblas 
-# module load openmpi 
+module load openmpi 
 # module load netcdf-fortran
 
 
 # If a library cannot be found by Cmake, you can specify the path like so:
-export CMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH:/u1/cvb652/Summa-Actors/utils/dependencies/caf/"
-export CMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH:/u1/cvb652/Summa-Actors/utils/dependencies/sundials/"
+export CMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH:/globalhome/cvb652/HPC/Summa-Actors/utils/dependencies/caf/"
+export CMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH:/globalhome/cvb652/HPC/Summa-Actors/utils/dependencies/sundials/"
 
 
 # -----------------------------------
@@ -36,5 +37,5 @@ export CMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH:/u1/cvb652/Summa-Actors/utils/depen
 # If compiling V4 with sundials use the folowing (default)
 # -----------------------------------
 
-cmake -B ./cmake_build -S .. -DUSE_SUNDIALS=ON -DCMAKE_BUILD_TYPE=Debug
+cmake -B ./cmake_build -S .. -DUSE_SUNDIALS=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build ./cmake_build --target all -j
