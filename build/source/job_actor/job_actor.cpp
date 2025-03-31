@@ -167,54 +167,113 @@ behavior JobActor::async_mode() {
 
       // Update tolerances (general and specific)
       bool tol_updated = false;
+      bool fallback_requiered = false;
+      bool known_error_found = false;
+      
+      std::set<std::string> triggered_errors;
+      for (const auto& [job_index, err_type] : last_error_type_) {
+        self_->println("Restarting GRU {} due to error: {}", job_index, err_type);
+        triggered_errors.insert(err_type);
+      }
 
-      tol_updated |= tighten_tol(rel_tol_, MIN_REL_TOL, "rel_tol_");
-      hru_actor_settings_.rel_tol_ = rel_tol_;
+      std::set<std::string> tolerances_to_reduce;
+      for (const auto& error : triggered_errors) {
+        if (error == "canopy_temp_high") {
+          known_error_found= true;
+          tolerances_to_reduce.insert("rel_tol_temp_veg_");
+          tolerances_to_reduce.insert("abs_tol_temp_veg_");
+          tolerances_to_reduce.insert("rel_tol_temp_cas_");
+        } else if (error == "canopy_air_space_temp_high") {
+          known_error_found= true;
+          tolerances_to_reduce.insert("rel_tol_temp_cas_");
+          tolerances_to_reduce.insert("rel_tol_temp_veg_");
+          tolerances_to_reduce.insert("abs_tol_temp_cas_");
+          
+        } else if (error == "layer_water_out_of_bounds") {
+          known_error_found = true;
+          tolerances_to_reduce.insert("rel_tol_temp_soil_snow_");
+          tolerances_to_reduce.insert("abs_tol_temp_soil_snow_");
+          tolerances_to_reduce.insert("rel_tol_wat_snow_");
+          tolerances_to_reduce.insert("abs_tol_wat_snow_");
+        } else if (error == "canopy_liq_water_neg") {
+          known_error_found = true;
+          tolerances_to_reduce.insert("rel_tol_wat_veg_");
+          tolerances_to_reduce.insert("rel_tol_temp_veg_");
+          tolerances_to_reduce.insert("abs_tol_wat_veg_");
+        } else if (error == "unreasonable_snow_density") {
+          known_error_found = true;
+          tolerances_to_reduce.insert("rel_tol_temp_soil_snow_");
+          tolerances_to_reduce.insert("abs_tol_temp_soil_snow_");
+          tolerances_to_reduce.insert("rel_tol_wat_snow_");
+          tolerances_to_reduce.insert("abs_tol_wat_snow_");
+        } else if (error == "unknown_error") {
+          fallback_requiered = true;
+        }
+      }
 
-      tol_updated |= tighten_tol(abs_tol_, MIN_ABS_TOL, "abs_tol_");
-      hru_actor_settings_.abs_tol_ = abs_tol_;
+      auto tighten = [&](const std::string& tol_name) {
+        double* tol_ptr = nullptr;
+        if (tol_name == "rel_tol_temp_veg_")        tol_ptr = &rel_tol_temp_veg_;
+        else if (tol_name == "abs_tol_temp_veg_")   tol_ptr = &abs_tol_temp_veg_;
+        else if (tol_name == "rel_tol_temp_cas_")   tol_ptr = &rel_tol_temp_cas_;
+        else if (tol_name == "rel_tol_temp_soil_snow_") tol_ptr = &rel_tol_temp_soil_snow_;
+        else if (tol_name == "abs_tol_temp_soil_snow_") tol_ptr = &abs_tol_temp_soil_snow_;
+        else if (tol_name == "rel_tol_wat_snow_")   tol_ptr = &rel_tol_wat_snow_;
+        else if (tol_name == "abs_tol_wat_snow_")   tol_ptr = &abs_tol_wat_snow_;
+        else if (tol_name == "rel_tol_wat_veg_")    tol_ptr = &rel_tol_wat_veg_;
+        else if (tol_name == "abs_tol_wat_veg_")    tol_ptr = &abs_tol_wat_veg_;
+        else if (tol_name == "abs_tol_temp_cas")    tol_ptr = &abs_tol_temp_cas_;
 
-      tol_updated |= tighten_tol(rel_tol_temp_cas_, MIN_REL_TOL, "rel_tol_temp_cas_");
-      hru_actor_settings_.rel_tol_temp_cas_ = rel_tol_temp_cas_;
+        if (tol_ptr && *tol_ptr > MIN_REL_TOL) {
+          *tol_ptr /= 10;
+          self_->println("Tightened {} = {}", tol_name, *tol_ptr);
+          return true;
+        }
+        return false;
+      };
 
-      tol_updated |= tighten_tol(rel_tol_temp_veg_, MIN_REL_TOL, "rel_tol_temp_veg_");
-      hru_actor_settings_.rel_tol_temp_veg_ = rel_tol_temp_veg_;
+      for (const auto& tol : tolerances_to_reduce) {
+        tol_updated |= tighten(tol);
+      }
 
-      tol_updated |= tighten_tol(rel_tol_wat_veg_, MIN_REL_TOL, "rel_tol_wat_veg_");
-      hru_actor_settings_.rel_tol_wat_veg_ = rel_tol_wat_veg_;
+      if (fallback_requiered && !known_error_found){
+        self_->println("Fallback triggered: unknown error type(s) encountered. Tightening all tolerances.");
+        tol_updated |= tighten_tol(rel_tol_, MIN_REL_TOL, "rel_tol_");
+        tol_updated |= tighten_tol(abs_tol_, MIN_ABS_TOL, "abs_tol_");
+      
+        tol_updated |= tighten_tol(rel_tol_temp_cas_, MIN_REL_TOL, "rel_tol_temp_cas_");
+        tol_updated |= tighten_tol(rel_tol_temp_veg_, MIN_REL_TOL, "rel_tol_temp_veg_");
+        tol_updated |= tighten_tol(rel_tol_wat_veg_, MIN_REL_TOL, "rel_tol_wat_veg_");
+        tol_updated |= tighten_tol(rel_tol_temp_soil_snow_, MIN_REL_TOL, "rel_tol_temp_soil_snow_");
+        tol_updated |= tighten_tol(rel_tol_wat_snow_, MIN_REL_TOL, "rel_tol_wat_snow_");
+        tol_updated |= tighten_tol(rel_tol_matric_, MIN_REL_TOL, "rel_tol_matric_");
+        tol_updated |= tighten_tol(rel_tol_aquifr_, MIN_REL_TOL, "rel_tol_aquifr_");
+      
+        tol_updated |= tighten_tol(abs_tol_temp_cas_, MIN_ABS_TOL, "abs_tol_temp_cas_");
+        tol_updated |= tighten_tol(abs_tol_temp_veg_, MIN_ABS_TOL, "abs_tol_temp_veg_");
+        tol_updated |= tighten_tol(abs_tol_wat_veg_, MIN_ABS_TOL, "abs_tol_wat_veg_");
+        tol_updated |= tighten_tol(abs_tol_temp_soil_snow_, MIN_ABS_TOL, "abs_tol_temp_soil_snow_");
+        tol_updated |= tighten_tol(abs_tol_wat_snow_, MIN_ABS_TOL, "abs_tol_wat_snow_");
+        tol_updated |= tighten_tol(abs_tol_matric_, MIN_ABS_TOL, "abs_tol_matric_");
+        tol_updated |= tighten_tol(abs_tol_aquifr_, MIN_ABS_TOL, "abs_tol_aquifr_");
+      }
 
-      tol_updated |= tighten_tol(rel_tol_temp_soil_snow_, MIN_REL_TOL, "rel_tol_temp_soil_snow_");
+            // Update HRU actor settings with new tolerance values
+      hru_actor_settings_.rel_tol_temp_cas_       = rel_tol_temp_cas_;
+      hru_actor_settings_.rel_tol_temp_veg_       = rel_tol_temp_veg_;
+      hru_actor_settings_.rel_tol_wat_veg_        = rel_tol_wat_veg_;
       hru_actor_settings_.rel_tol_temp_soil_snow_ = rel_tol_temp_soil_snow_;
+      hru_actor_settings_.rel_tol_wat_snow_       = rel_tol_wat_snow_;
+      hru_actor_settings_.rel_tol_matric_         = rel_tol_matric_;
+      hru_actor_settings_.rel_tol_aquifr_         = rel_tol_aquifr_;
 
-      tol_updated |= tighten_tol(rel_tol_wat_snow_, MIN_REL_TOL, "rel_tol_wat_snow_");
-      hru_actor_settings_.rel_tol_wat_snow_ = rel_tol_wat_snow_;
-
-      tol_updated |= tighten_tol(rel_tol_matric_, MIN_REL_TOL, "rel_tol_matric_");
-      hru_actor_settings_.rel_tol_matric_ = rel_tol_matric_;
-
-      tol_updated |= tighten_tol(rel_tol_aquifr_, MIN_REL_TOL, "rel_tol_aquifr_");
-      hru_actor_settings_.rel_tol_aquifr_ = rel_tol_aquifr_;
-
-      tol_updated |= tighten_tol(abs_tol_temp_cas_, MIN_ABS_TOL, "abs_tol_temp_cas_");
-      hru_actor_settings_.abs_tol_temp_cas_ = abs_tol_temp_cas_;
-
-      tol_updated |= tighten_tol(abs_tol_temp_veg_, MIN_ABS_TOL, "abs_tol_temp_veg_");
-      hru_actor_settings_.abs_tol_temp_veg_ = abs_tol_temp_veg_;
-
-      tol_updated |= tighten_tol(abs_tol_wat_veg_, MIN_ABS_TOL, "abs_tol_wat_veg_");
-      hru_actor_settings_.abs_tol_wat_veg_ = abs_tol_wat_veg_;
-
-      tol_updated |= tighten_tol(abs_tol_temp_soil_snow_, MIN_ABS_TOL, "abs_tol_temp_soil_snow_");
+      hru_actor_settings_.abs_tol_temp_cas_       = abs_tol_temp_cas_;
+      hru_actor_settings_.abs_tol_temp_veg_       = abs_tol_temp_veg_;
+      hru_actor_settings_.abs_tol_wat_veg_        = abs_tol_wat_veg_;
       hru_actor_settings_.abs_tol_temp_soil_snow_ = abs_tol_temp_soil_snow_;
-
-      tol_updated |= tighten_tol(abs_tol_wat_snow_, MIN_ABS_TOL, "abs_tol_wat_snow_");
-      hru_actor_settings_.abs_tol_wat_snow_ = abs_tol_wat_snow_;
-
-      tol_updated |= tighten_tol(abs_tol_matric_, MIN_ABS_TOL, "abs_tol_matric_");
-      hru_actor_settings_.abs_tol_matric_ = abs_tol_matric_;
-
-      tol_updated |= tighten_tol(abs_tol_aquifr_, MIN_ABS_TOL, "abs_tol_aquifr_");
-      hru_actor_settings_.abs_tol_aquifr_ = abs_tol_aquifr_; 
+      hru_actor_settings_.abs_tol_wat_snow_       = abs_tol_wat_snow_;
+      hru_actor_settings_.abs_tol_matric_         = abs_tol_matric_;
+      hru_actor_settings_.abs_tol_aquifr_         = abs_tol_aquifr_;
 
       // notify file_access_actor
       self_->mail(restart_failures_v).send(file_access_actor_);
@@ -254,6 +313,7 @@ behavior JobActor::async_mode() {
         gru_struc_->addGRU(std::move(gru_obj));
         self_->mail(update_hru_async_v).send(gru_actor);
       }
+      last_error_type_.clear();
       gru_struc_->decrementRetryAttempts();
       self_->println("Retries left: {}",gru_struc_->getRetryAttemptsLeft());
     },
@@ -711,6 +771,26 @@ void JobActor::handleGRUError(int err_code, int job_index, int timestep,
                               std::string& err_msg) {
   gru_struc_->getGRU(job_index)->setFailed();
   gru_struc_->incrementNumGruFailed();
+
+  //Extract error and store to change tolernce accrodingly
+  if (err_msg.find("canopy temp high") != std::string::npos) {
+    last_error_type_[job_index] = "canopy_temp_high";
+  }
+  else if (err_msg.find("canopy air space temp high") != std::string::npos){
+    last_error_type_[job_index] = "canopy_air_space_temp_high";
+  }
+  else if (err_msg.find("layer water out of bounds") != std::string::npos){
+    last_error_type_[job_index] = "layer_water_out_of_bounds";
+  }
+  else if (err_msg.find("canopy liq water neg") != std::string::npos){
+    last_error_type_[job_index] = "canopy_liq_water_neg";
+  }
+  else if (err_msg.find("unreasonable value for snow density") != std::string::npos){
+    last_error_type_[job_index] = "unreasonable_snow_density";
+  }
+  else if (last_error_type_.find(job_index) == last_error_type_.end()){
+    last_error_type_[job_index] = "unknown_error";
+  }
   self_->mail(run_failure_v, job_index).send(file_access_actor_);
   if (gru_struc_->isDone()) {
     gru_struc_->hasFailures() && gru_struc_->shouldRetry() ?

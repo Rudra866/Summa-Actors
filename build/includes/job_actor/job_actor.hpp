@@ -34,6 +34,7 @@ class JobActor {
   std::unique_ptr<Logger> logger_;
   std::unique_ptr<ErrorLogger> err_logger_;
   std::unique_ptr<SuccessLogger> success_logger_;
+  std::unordered_map<int, std::string> last_error_type_; // To store error types
 
   // Actor References
   caf::actor file_access_actor_;
